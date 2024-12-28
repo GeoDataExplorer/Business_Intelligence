@@ -1,12 +1,11 @@
-library(dplyr)
-
 library(openxlsx)
-
 library(plotly)
-
 library(shiny)
-
-
+library(dplyr)
+library(cowplot)
+library(lubridate)
+library(scales)
+library(readr)
 
 #daily2014 <- read.xlsx("https://oklahoma.gov/content/dam/ok/en/occ/documents/og/ogdatafiles/dly1012d-2012-2014.xlsx",sheet = 1)
 
@@ -24,108 +23,107 @@ library(shiny)
 
 #daily2021 <- read.xlsx("https://oklahoma.gov/content/dam/ok/en/occ/documents/og/ogdatafiles/dly1012d_2021.xlsx",sheet = 1)
 
-daily2022 <- read.xlsx("https://oklahoma.gov/content/dam/ok/en/occ/documents/og/ogdatafiles/dly1012d_2022.xlsx",sheet = 1)
+#daily2022 <- read.xlsx("https://oklahoma.gov/content/dam/ok/en/occ/documents/og/ogdatafiles/dly1012d_2022.xlsx",sheet = 1)
 
+#daily2023 <- read.xlsx("https://oklahoma.gov/content/dam/ok/en/occ/documents/og/ogdatafiles/dly1012d_2023.xlsx",sheet = 1)
 
+#daily2023 <- read.csv('/cloud/project/app_Arbuckle_1012D_Volumes/data/daily2023.csv')
 
-#daily_join <- rbind(daily2014,daily2015,daily2016,daily2017,daily2018,daily2019,daily2020,daily2021,daily2022)
+#files <- list.files('/cloud/project/app_Arbuckle_1012D_Volumes/data/',pattern = ".csv$", recursive = TRUE, full.names = TRUE)
 
-daily_join = daily2022
+#daily_join <- read.csv(files) %>% bind_rows()
 
-#daily_join$API <- as.character(daily_join$API)
+daily_join <- read.csv('/cloud/project/app_Arbuckle_1012D_Volumes/data/daily_join.csv')
 
+# Row-bind the two data frames
+daily_join_All <- rbind(daily_join, daily2023)
 
+# Now 'combined_data' contains the combined data from all CSV files
 
-#daily_join$Operator_Number <- as.character(daily_join$Operator_Number)
+#daily_join <- write.csv(daily_join,"/cloud/project/app_Arbuckle_1012D_Volumes/daily_join.csv")
 
+daily_join <- read.csv("/cloud/project/app_Arbuckle_1012D_Volumes/data/daily_join.csv")
 
+daily_join <- daily_join[ ,-c(1)]
 
-#daily_join$Pressure_PSI <- as.numeric(daily_join$Pressure_PSI)
+#daily_join <- rbind(daily_join,daily2022)
 
+daily_join$API <- as.character(daily_join$API)
 
+daily_join$Operator_Number <- as.character(daily_join$Operator_Number)
 
-#daily_join$Daily_Report_Date_Start <- as.Date(daily_join$Daily_Report_Date_Start, origin = '1900-01-01')
+daily_join$Pressure_PSI <- as.numeric(daily_join$Pressure_PSI)
 
+daily_join$Daily_Report_Date_Start <- as.Date(daily_join$Daily_Report_Date_Start, origin = '1900-01-01')
 
+daily_join$Daily_Report_Date_End <- as.Date(daily_join$Daily_Report_Date_End, origin = '1900-01-01')
 
-#daily_join$Daily_Report_Date_End <- as.Date(daily_join$Daily_Report_Date_End, origin = '1900-01-01')
+daily_join$Report_Date <- as.Date(daily_join$Report_Date, origin = '1900-01-01')
 
+daily_join$WellName <- paste(daily_join$Well_Name, "", daily_join$Well_Num)
 
+daily_join <-daily_join[order(daily_join$API,daily_join$Report_Date),]
 
-#daily_join$Report_Date <- as.Date(daily_join$Report_Date, origin = '1900-01-01')
+daily_join$Volume_Cumsum <- ave(daily_join$Volume_BPD,daily_join$API, FUN = cumsum)
 
-
-
-#daily_join$WellName <- paste(daily_join$Well_Name, "", daily_join$Well_Num)
-
-
-
-#daily_join <-daily_join[order(daily_join$API,daily_join$Report_Date),]
-
-
-
-#daily_join$Volume_BPD_cs <- ave(daily_join$Volume_BPD,daily_join$API, FUN = cumsum)
-
-
+daily_join$Pressure_Cumsum <- ave(daily_join$Pressure_PSI,daily_join$API, FUN = cumsum)
 
 ui <- fluidPage(
-  
-  h3("Reported Arbuckle Injection Volumes - Form 1012D"),
-  
-  selectInput("API","API",selected = "3511924020", choices = unique(daily_join$API), multiple = TRUE,selectize = TRUE),
-  
-  h6("Multiple Wells Can Be Selected"),
-  
-  dateInput("DateFrom","From Date",value = '2012-09-21',startview = "year"),
-  
-  dateInput("DateTo","To Date",value = Sys.Date(),startview = "year"),
-  
-  plotlyOutput("plotly1"),
-  
-  plotlyOutput("plotly2"),
-  
-  plotlyOutput("plotly3"),
-  
-  br(),
-  
-  verbatimTextOutput("stats"),
-  
-  br(),
-  
-  downloadButton("downloadData")
-  
+  titlePanel("Reported Arbuckle Injection Volumes - Form 1012D"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("API","API",selected = "3505323364", choices = unique(daily_join$API), multiple = TRUE,selectize = TRUE),
+      h6("Multiple Wells Can Be Selected"),
+      dateInput("DateFrom","From Date",value = '2012-09-21',startview = "year"),
+      dateInput("DateTo","To Date",value = Sys.Date(),startview = "year")
+    )
+    ,
+    mainPanel(
+      #plotOutput("plot"),
+      plotlyOutput("plotly1"),
+      plotlyOutput("plotly2"),
+      plotlyOutput("plotly3"),
+      plotlyOutput("plotly4"),
+      plotlyOutput("plotly5"),
+      #img(src="C:/Users/GD7/OneDrive - State of Oklahoma/Screen Shots/Hall Integral.jpg"),
+      #verbatimTextOutput("stats"),
+      downloadButton("downloadData")
+    )
+  )
 )
-
-
 
 server <- function(input,output){
   
-  
-  
-  
-  
-  
+  output$plot <- renderPlot({
+    
+    daily_join <-daily_join[order(daily_join$API,daily_join$Report_Date),]
+    
+    daily_join$dP <- append(diff(daily_join$Pressure_PSI),0)*-1
+    daily_join$dV <- append(diff(daily_join$Volume_BPD),0)*-1
+    
+    daily_join$Volume_Cumsum <- ave(daily_join$Volume_BPD,daily_join$API, FUN = cumsum)
+    daily_join$Pressure_Cumsum <- ave(daily_join$Pressure_PSI,daily_join$API, FUN = cumsum)
+    
+    
+    
+    plot1<-daily_join %>% filter(API %in% input$API & between(Report_Date,input$DateFrom,input$DateTo))%>%ggplot(., aes(x = Report_Date, colour = factor(WellName)))+ geom_line(aes(y = Volume_BPD))
+    plot2<-daily_join %>% filter(API %in% input$API & between(Report_Date,input$DateFrom,input$DateTo))%>%ggplot(., aes(x = Report_Date, colour = factor(WellName)))+ geom_line(aes(y = Volume_Cumsum))
+    plot3<-daily_join %>% filter(API %in% input$API & between(Report_Date,input$DateFrom,input$DateTo))%>%ggplot(., aes(x = Report_Date, colour = factor(WellName)))+ geom_line(aes(y = Pressure_PSI))
+    plot4<-daily_join %>% filter(API %in% input$API & between(Report_Date,input$DateFrom,input$DateTo))%>%ggplot(., aes(x = Report_Date, colour = factor(WellName)))+ geom_line(aes(y = Pressure_Cumsum))
+    plot5<-daily_join %>% filter(API %in% input$API & between(Report_Date,input$DateFrom,input$DateTo))%>%ggplot(., aes(x = Volume_Cumsum, colour = factor(WellName)))+ geom_line(aes(y = Pressure_Cumsum))
+    
+    cowplot::plot_grid(plot1,plot2,plot3,plot4,plot5, nrow = 3, labels = c('Volume_BPD','Volume_CumSum','Pressure_PSI','Hall Plot'))
+    
+  })
   
   output$plotly1<- renderPlotly({
-    
-    
-    
-    
     
     
     
     daily_join <-daily_join[order(daily_join$API,daily_join$Report_Date),]
     
     
-    
-    
-    
-    daily_join %>% filter(API %in% input$API & between(Report_Date,input$DateFrom,input$DateTo)) %>% ggplot(., aes(x = Report_Date, colour = factor(WellName)))+ geom_line(aes(y = Volume_BPD))
-    
-    
-    
-    
-    
+    daily_join %>% filter(API %in% input$API & between(Report_Date,input$DateFrom,input$DateTo)) %>% ggplot(., aes(x = Report_Date, colour = factor(WellName)))+ geom_point(aes(y = Volume_BPD),size = 1)+geom_smooth(aes(y = Volume_BPD),size = 1, method = 'loess',span = 0.3, se = TRUE) + scale_y_continuous(trans = log10_trans())
     
     
     
@@ -133,23 +131,13 @@ server <- function(input,output){
   })
   
   
-  
   output$plotly2<- renderPlotly({
-    
-    
-    
-    
     
     
     
     daily_join <-daily_join[order(daily_join$API,daily_join$Report_Date),]
     
-    
-    
     daily_join$Volume_Cumsum <- ave(daily_join$Volume_BPD,daily_join$API, FUN = cumsum)
-    
-    
-    
     
     
     daily_join %>% filter(API %in% input$API & between(Report_Date,input$DateFrom,input$DateTo)) %>% ggplot(., aes(x = Report_Date, colour = factor(WellName)))+ geom_line(aes(y = Volume_Cumsum))
@@ -157,87 +145,67 @@ server <- function(input,output){
     
     
     
-    
-    
-    
-    
-    
   })
   
-  
-  
   output$plotly3<- renderPlotly({
-    
-    
-    
-    
     
     
     
     daily_join <-daily_join[order(daily_join$API,daily_join$Report_Date),]
     
     
-    
-    daily_join$Volume_Cumsum <- ave(daily_join$Volume_BPD,daily_join$API, FUN = cumsum)
-    
-    
-    
-    daily_join$Pressure_Cumsum <- ave(daily_join$Pressure_PSI,daily_join$API, FUN = cumsum)
-    
-    
-    
-    
-    
-    daily_join %>% filter(API %in% input$API & between(Report_Date,input$DateFrom,input$DateTo)) %>% ggplot(., aes(x = Volume_Cumsum, colour = factor(WellName)))+ geom_line(aes(y = Pressure_Cumsum))
-    
-    
-    
-    
-    
+    daily_join %>% filter(API %in% input$API & between(Report_Date,input$DateFrom,input$DateTo)) %>% ggplot(., aes(x = Report_Date, colour = factor(WellName)))+ geom_point(aes(y = Pressure_PSI),size = 1)
     
     
     
     
   })
   
-  
-  
-  output$stats <- renderPrint(
+  output$plotly4<- renderPlotly({
     
-    daily_join %>% filter(API %in% input$API & between(Report_Date,input$DateFrom,input$DateTo))%>%
-      
-      summary(daily_join)
     
-  )
+    
+    daily_join <-daily_join[order(daily_join$API,daily_join$Report_Date),]
+    
+    daily_join$Pressure_Cumsum <- ave(daily_join$Pressure_PSI,daily_join$API, FUN = cumsum)
+    
+    
+    daily_join %>% filter(API %in% input$API & between(Report_Date,input$DateFrom,input$DateTo)) %>% ggplot(., aes(x = Report_Date, colour = factor(WellName)))+ geom_line(aes(y = Pressure_Cumsum))
+    
+  })
+  
+  output$plotly5<- renderPlotly({
+    
+    daily_join <-daily_join[order(daily_join$API,daily_join$Report_Date),]
+    daily_join$Volume_Sum <- ave(daily_join$Volume_BPD,daily_join$API, FUN = sum)
+    daily_join$Volume_Cumsum <- ave(daily_join$Volume_BPD,daily_join$API, FUN = cumsum)
+    daily_join$Pressure_Sum <- ave(daily_join$Pressure_PSI,daily_join$API, FUN = sum)
+    daily_join$Pressure_Cumsum <- ave(daily_join$Pressure_PSI,daily_join$API, FUN = cumsum)
+    daily_join$Volume_Cumsum_percentage= 100*((daily_join$Volume_Cumsum)/(daily_join$Volume_Sum))
+    daily_join$Pressure_Cumsum_percentage= 100*((daily_join$Pressure_Cumsum)/(daily_join$Pressure_Sum))
+    
+    
+    daily_join %>% filter(API %in% input$API & between(Report_Date,input$DateFrom,input$DateTo))%>%ggplot(., aes(x = Volume_Cumsum, colour = factor(WellName)))+ geom_line(aes(y = Pressure_Cumsum))
+    
+  })
+  
+  #output$plotly <- renderPlotly({plot_grid(plotlist = list(output$plotly1, output$plotly2, output$plotly3, output$plotly4, output$plotly5), ncol = 5)})
   
   
+  #output$stats <- renderPrint(daily_join %>% filter(API %in% input$API & between(Report_Date,input$DateFrom,input$DateTo))%>%summary(daily_join))
   
   # Download data
-  
   output$downloadData <- downloadHandler(
-    
     filename = function() {
-      
       paste('data-', Sys.Date(), '.csv', sep='')
-      
     },
-    
     content = function(file) {
-      
       daily_join <- daily_join %>% filter(API %in% input$API)
-      
       write.csv(daily_join, file)
-      
     }
-    
   )
-  
-  
-  
   
   
 }
-
-
 
 shinyApp(ui=ui,server=server)
