@@ -1,0 +1,243 @@
+library(dplyr)
+
+library(openxlsx)
+
+library(plotly)
+
+library(shiny)
+
+
+
+#daily2014 <- read.xlsx("https://oklahoma.gov/content/dam/ok/en/occ/documents/og/ogdatafiles/dly1012d-2012-2014.xlsx",sheet = 1)
+
+#daily2015 <- read.xlsx("https://oklahoma.gov/content/dam/ok/en/occ/documents/og/ogdatafiles/dly1012d-2015.xlsx",sheet = 1)
+
+#daily2016 <- read.xlsx("https://oklahoma.gov/content/dam/ok/en/occ/documents/og/ogdatafiles/dly1012d-2016.xlsx",sheet = 1)
+
+#daily2017 <- read.xlsx("https://oklahoma.gov/content/dam/ok/en/occ/documents/og/ogdatafiles/dly1012d-2017.xlsx",sheet = 1)
+
+#daily2018 <- read.xlsx("https://oklahoma.gov/content/dam/ok/en/occ/documents/og/ogdatafiles/dly1012d-2018.xlsx",sheet = 1)
+
+#daily2019 <- read.xlsx("https://oklahoma.gov/content/dam/ok/en/occ/documents/og/ogdatafiles/dly1012d-2019.xlsx",sheet = 1)
+
+#daily2020 <- read.xlsx("https://oklahoma.gov/content/dam/ok/en/occ/documents/og/ogdatafiles/dly1012d_2020.xlsx",sheet = 1)
+
+#daily2021 <- read.xlsx("https://oklahoma.gov/content/dam/ok/en/occ/documents/og/ogdatafiles/dly1012d_2021.xlsx",sheet = 1)
+
+daily2022 <- read.xlsx("https://oklahoma.gov/content/dam/ok/en/occ/documents/og/ogdatafiles/dly1012d_2022.xlsx",sheet = 1)
+
+
+
+#daily_join <- rbind(daily2014,daily2015,daily2016,daily2017,daily2018,daily2019,daily2020,daily2021,daily2022)
+
+daily_join = daily2022
+
+#daily_join$API <- as.character(daily_join$API)
+
+
+
+#daily_join$Operator_Number <- as.character(daily_join$Operator_Number)
+
+
+
+#daily_join$Pressure_PSI <- as.numeric(daily_join$Pressure_PSI)
+
+
+
+#daily_join$Daily_Report_Date_Start <- as.Date(daily_join$Daily_Report_Date_Start, origin = '1900-01-01')
+
+
+
+#daily_join$Daily_Report_Date_End <- as.Date(daily_join$Daily_Report_Date_End, origin = '1900-01-01')
+
+
+
+#daily_join$Report_Date <- as.Date(daily_join$Report_Date, origin = '1900-01-01')
+
+
+
+#daily_join$WellName <- paste(daily_join$Well_Name, "", daily_join$Well_Num)
+
+
+
+#daily_join <-daily_join[order(daily_join$API,daily_join$Report_Date),]
+
+
+
+#daily_join$Volume_BPD_cs <- ave(daily_join$Volume_BPD,daily_join$API, FUN = cumsum)
+
+
+
+ui <- fluidPage(
+  
+  h3("Reported Arbuckle Injection Volumes - Form 1012D"),
+  
+  selectInput("API","API",selected = "3511924020", choices = unique(daily_join$API), multiple = TRUE,selectize = TRUE),
+  
+  h6("Multiple Wells Can Be Selected"),
+  
+  dateInput("DateFrom","From Date",value = '2012-09-21',startview = "year"),
+  
+  dateInput("DateTo","To Date",value = Sys.Date(),startview = "year"),
+  
+  plotlyOutput("plotly1"),
+  
+  plotlyOutput("plotly2"),
+  
+  plotlyOutput("plotly3"),
+  
+  br(),
+  
+  verbatimTextOutput("stats"),
+  
+  br(),
+  
+  downloadButton("downloadData")
+  
+)
+
+
+
+server <- function(input,output){
+  
+  
+  
+  
+  
+  
+  
+  output$plotly1<- renderPlotly({
+    
+    
+    
+    
+    
+    
+    
+    daily_join <-daily_join[order(daily_join$API,daily_join$Report_Date),]
+    
+    
+    
+    
+    
+    daily_join %>% filter(API %in% input$API & between(Report_Date,input$DateFrom,input$DateTo)) %>% ggplot(., aes(x = Report_Date, colour = factor(WellName)))+ geom_line(aes(y = Volume_BPD))
+    
+    
+    
+    
+    
+    
+    
+    
+    
+  })
+  
+  
+  
+  output$plotly2<- renderPlotly({
+    
+    
+    
+    
+    
+    
+    
+    daily_join <-daily_join[order(daily_join$API,daily_join$Report_Date),]
+    
+    
+    
+    daily_join$Volume_Cumsum <- ave(daily_join$Volume_BPD,daily_join$API, FUN = cumsum)
+    
+    
+    
+    
+    
+    daily_join %>% filter(API %in% input$API & between(Report_Date,input$DateFrom,input$DateTo)) %>% ggplot(., aes(x = Report_Date, colour = factor(WellName)))+ geom_line(aes(y = Volume_Cumsum))
+    
+    
+    
+    
+    
+    
+    
+    
+    
+  })
+  
+  
+  
+  output$plotly3<- renderPlotly({
+    
+    
+    
+    
+    
+    
+    
+    daily_join <-daily_join[order(daily_join$API,daily_join$Report_Date),]
+    
+    
+    
+    daily_join$Volume_Cumsum <- ave(daily_join$Volume_BPD,daily_join$API, FUN = cumsum)
+    
+    
+    
+    daily_join$Pressure_Cumsum <- ave(daily_join$Pressure_PSI,daily_join$API, FUN = cumsum)
+    
+    
+    
+    
+    
+    daily_join %>% filter(API %in% input$API & between(Report_Date,input$DateFrom,input$DateTo)) %>% ggplot(., aes(x = Volume_Cumsum, colour = factor(WellName)))+ geom_line(aes(y = Pressure_Cumsum))
+    
+    
+    
+    
+    
+    
+    
+    
+    
+  })
+  
+  
+  
+  output$stats <- renderPrint(
+    
+    daily_join %>% filter(API %in% input$API & between(Report_Date,input$DateFrom,input$DateTo))%>%
+      
+      summary(daily_join)
+    
+  )
+  
+  
+  
+  # Download data
+  
+  output$downloadData <- downloadHandler(
+    
+    filename = function() {
+      
+      paste('data-', Sys.Date(), '.csv', sep='')
+      
+    },
+    
+    content = function(file) {
+      
+      daily_join <- daily_join %>% filter(API %in% input$API)
+      
+      write.csv(daily_join, file)
+      
+    }
+    
+  )
+  
+  
+  
+  
+  
+}
+
+
+
+shinyApp(ui=ui,server=server)
